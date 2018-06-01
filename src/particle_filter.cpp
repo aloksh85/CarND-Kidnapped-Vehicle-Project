@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <iterator>
+#include <assert.h>
 
 #include "particle_filter.h"
 
@@ -24,7 +25,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1.
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
-	num_particles = 100;
+	num_particles = 20;
 	std::default_random_engine gen;
 	std::normal_distribution<double> dist_x(x,std[0]);
 	std::normal_distribution<double> dist_y(y,std[1]);
@@ -38,6 +39,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 	is_initialized = true;
 
+ cout<<"Initialization complete"<<endl;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -66,25 +68,36 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 
 		}
 	}
+	cout<<"prediction complete"<<endl;
 }
 
-void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
+void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted,
+																		 std::vector<LandmarkObs>& assoc_observations,
+																		 const std::vector<LandmarkObs>& observations) {
 	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the
 	//   observed measurement to this particular landmark.
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to
 	//   implement this method and use it as a helper during the updateWeights phase.
-	for(auto& ob : observations) {
-		double min_dist = 10000.0;
-		int min_id = -1;
-		for(const auto& p : predicted) {
-			double distance = dist( p.x, p.y,ob.x, ob.y);
-			if(distance < min_dist) {
+
+		for(unsigned int i =0; i< predicted.size(); ++i) {
+			LandmarkObs p = predicted.at(i);
+			double min_dist = 100000;
+			int min_idx = -1;
+			int min_id = -1;
+			for(unsigned int j =0; j< observations.size(); ++j) {
+				LandmarkObs ob = observations.at(j);
+				double distance = dist( p.x, p.y,ob.x, ob.y);
+				if(distance < min_dist) {
 				min_dist = distance;
 				min_id = p.id;
+				min_idx =j;
 			}
 		}
-		ob.id =min_id;
+		if(min_idx >=0 )
+			assoc_observations.push_back(observations.at(min_idx));
 	}
+
+
 }
 
 void computeLandmarkPredictions(std::vector<LandmarkObs>& predictions, const Particle& p, const double& sense_range, const Map& map_landmarks) {
@@ -140,14 +153,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		computeLandmarkPredictions(predictions, p, sensor_range, map_landmarks);
 		std::vector<LandmarkObs> observations_map_coords;
 		transformToMapCoordinates(observations_map_coords,observations, p.x,p.y,p.theta);
-		dataAssociation(predictions, observations_map_coords);
+		std::vector<LandmarkObs> assoc_observations;
+		dataAssociation(predictions, assoc_observations,observations_map_coords);
 		p.weight = 1.0;
-		for(const auto& pred: predictions) {
-			LandmarkObs assoc_observation = observations_map_coords.at(pred.id);
+		assert(predictions.size() == assoc_observations.size());
+		for(unsigned int i=0;i<predictions.size();++i) {
+			LandmarkObs pred = predictions.at(i);
+			LandmarkObs assoc_observation = assoc_observations.at(i);
 			double meas_prob = (1/(2*M_PI*std_landmark[0]*std_landmark[1]))*std::exp(-0.5*(pow((assoc_observation.x-pred.x)/std_landmark[0],2.0)+
 																																											pow((assoc_observation.y-pred.y)/std_landmark[1],2.0)));
       p.weight*=meas_prob;
 			weights[p.id] =p.weight;
+			++i;
 		}
 	}
 }
